@@ -2,9 +2,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { logger } from "./logger.js";
 
 type WsEvent =
-  | { type: "noise"; deviceId: string; noiseDb: number; ts: number }
-  | { type: "alert"; deviceId: string; noiseDb: number; thresholdDb: number; ts: number }
-  | { type: "device_status"; deviceId: string; status: "ONLINE" | "OFFLINE"; lastSeen: number }
+  | { type: "noise"; deviceId: string; zone: string; noiseDb: number; ts: number }
+  | { type: "alert"; deviceId: string; zone: string; noiseDb: number; thresholdDb: number; ts: number }
+  | { type: "device_status"; deviceId: string; zone: string; status: "ONLINE" | "OFFLINE"; lastSeen: number }
   | { type: "thresholds"; thresholds: Array<{ deviceId: string | null; thresholdDb: number }> };
 
 const clients = new Set<WebSocket>();

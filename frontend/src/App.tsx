@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 import { useWebSocket } from "./hooks/useWebSocket";
+import ToastContainer from "./components/ToastContainer";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
@@ -16,25 +17,28 @@ export default function App() {
   useWebSocket();
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute adminOnly>
-            <Admin />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/dashboard" />} />
-    </Routes>
+    <>
+      <ToastContainer />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute adminOnly>
+              <Admin />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/dashboard" />} />
+      </Routes>
+    </>
   );
 }
