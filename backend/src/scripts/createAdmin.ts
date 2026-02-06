@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { dbClient } from "../db/index.js";
+import { writeUser, queryUser } from "../services/influx.js";
 
 const args = process.argv.slice(2);
 
@@ -19,9 +19,6 @@ if (!email || !password) {
 
 const hash = bcrypt.hashSync(password, 10);
 
-const stmt = dbClient.prepare(
-  "INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'admin') ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, role = 'admin'"
-);
-stmt.run(email, hash);
+await writeUser(email, hash, "admin");
 
-console.log(`Admin ${email} created/updated successfully.`);
+console.log(`Admin ${email} created/updated successfully in InfluxDB.`);

@@ -1,20 +1,31 @@
-import Database from "better-sqlite3";
+import { InfluxDB } from "@influxdata/influxdb-client";
+import { config } from "../config.js";
 
-const db = new Database("./data/sqlite.db");
+const influx = new InfluxDB({ url: config.influx.url, token: config.influx.token });
+const queryApi = influx.getQueryApi(config.influx.org);
 
-const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-console.log("Tables:", tables.map((t: any) => t.name).join(", "));
+const run = async () => {
+  console.log("Checking InfluxDB connection...");
+  console.log("URL:", config.influx.url);
+  console.log("Org:", config.influx.org);
+  console.log("Bucket:", config.influx.bucket);
 
-try {
-  const count = db.prepare("SELECT COUNT(*) as c FROM noise_history").get() as { c: number };
-  console.log("noise_history count:", count.c);
-
-  if (count.c > 0) {
-    const samples = db.prepare("SELECT * FROM noise_history ORDER BY ts DESC LIMIT 5").all();
-    console.log("Last 5 records:", samples);
+  try {
+    const q = `
+      from(bucket: "${config.influx.bucket}")
+        |> range(start: -1h)
+        |> filter(fn: (r) => r._measurement == "noise")
+        |> sort(columns: ["_time"], desc: true)
+        |> limit(n: 5)
+    `;
+    const results = await queryApi.collectRows(q);
+    console.log(`noise_history count (last 1h): ${results.length}`);
+    if (results.length > 0) {
+      console.log("Last records:", JSON.stringify(results, null, 2));
+    }
+  } catch (e) {
+    console.error("InfluxDB query failed:", e);
   }
-} catch (e) {
-  console.log("Table noise_history does not exist yet");
-}
+};
 
-db.close();
+run();

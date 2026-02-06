@@ -3,14 +3,13 @@ import bcrypt from "bcryptjs";
 import jwt, { SignOptions } from "jsonwebtoken";
 import { z } from "zod";
 import { config } from "../config.js";
-import { dbClient, DbUser } from "../db/index.js";
+import { queryUser, writeAuditPoint } from "../services/influx.js";
 import { logger } from "../logger.js";
-import { writeAudit } from "../services/audit.js";
 
 const router = Router();
 
 const loginSchema = z.object({
-  email: z.string().min(3),  // Accept any string (including admin@local)
+  email: z.string().min(3),
   password: z.string().min(6)
 });
 
@@ -23,21 +22,25 @@ router.post("/login", async (req, res) => {
   }
 
   const { email, password } = parsed.data;
-  const stmt = dbClient.prepare("SELECT id, email, password_hash, role FROM users WHERE email = ?");
-  const user = stmt.get(email) as DbUser | undefined;
 
-  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+  try {
+    const user = await queryUser(email);
+    if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) return res.status(401).json({ error: "Invalid credentials" });
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
-  const signOptions: SignOptions = { expiresIn: config.jwtExpiresIn as jwt.SignOptions["expiresIn"] };
-  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, config.jwtSecret, signOptions);
+    const signOptions: SignOptions = { expiresIn: config.jwtExpiresIn as jwt.SignOptions["expiresIn"] };
+    const token = jwt.sign({ id: 0, email: user.email, role: user.role }, config.jwtSecret, signOptions);
 
-  writeAudit("login", user.email, { role: user.role });
-  logger.info({ msg: "user logged in", email: user.email });
+    await writeAuditPoint("login", user.email, { role: user.role }).catch(() => {});
+    logger.info({ msg: "user logged in", email: user.email });
 
-  return res.json({ token, role: user.role, email: user.email });
+    return res.json({ token, role: user.role, email: user.email });
+  } catch (err) {
+    logger.error({ msg: "login error", err });
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

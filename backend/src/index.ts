@@ -6,6 +6,7 @@ import { logger } from "./logger.js";
 import { initWebSocket, broadcast } from "./ws.js";
 import { startMqtt } from "./services/mqtt.js";
 import { checkOffline, listDevices } from "./services/deviceRegistry.js";
+import { initInflux } from "./services/influx.js";
 
 // Routes
 import authRoutes from "./routes/auth.js";
@@ -13,9 +14,6 @@ import devicesRoutes from "./routes/devices.js";
 import metricsRoutes from "./routes/metrics.js";
 import adminRoutes from "./routes/admin.js";
 import { authenticate } from "./middleware/auth.js";
-
-// Init DB
-import "./db/index.js";
 
 const app = express();
 
@@ -38,7 +36,17 @@ app.get("/health", (_req, res) => res.json({ status: "ok" }));
 const server = http.createServer(app);
 
 initWebSocket(server);
-startMqtt();
+
+// Init InfluxDB then start MQTT
+initInflux()
+  .then(() => {
+    logger.info({ msg: "influxdb initialized" });
+    startMqtt();
+  })
+  .catch((err) => {
+    logger.warn({ msg: "influxdb init failed, starting mqtt anyway", err });
+    startMqtt();
+  });
 
 // Periodically check offline status and broadcast
 setInterval(() => {

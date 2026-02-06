@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { getThresholds, upsertThreshold } from "../services/thresholds.js";
-import { listAudit, writeAudit } from "../services/audit.js";
+import { queryThresholds, writeThreshold, queryAuditLogs, writeAuditPoint } from "../services/influx.js";
 import { AuthedRequest, authenticate, requireRole } from "../middleware/auth.js";
 import { broadcast } from "../ws.js";
 
@@ -11,9 +10,13 @@ const router = Router();
 router.use(authenticate);
 router.use(requireRole("admin"));
 
-router.get("/thresholds", (_req, res) => {
-  const thresholds = getThresholds();
-  return res.json(thresholds);
+router.get("/thresholds", async (_req, res) => {
+  try {
+    const thresholds = await queryThresholds();
+    return res.json(thresholds);
+  } catch (err) {
+    return res.status(500).json({ error: "InfluxDB query failed" });
+  }
 });
 
 const thresholdSchema = z.object({
@@ -21,21 +24,30 @@ const thresholdSchema = z.object({
   thresholdDb: z.number()
 });
 
-router.post("/thresholds", (req: AuthedRequest, res) => {
+router.post("/thresholds", async (req: AuthedRequest, res) => {
   const parsed = thresholdSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Validation error" });
 
   const { deviceId, thresholdDb } = parsed.data;
-  upsertThreshold(deviceId ?? null, thresholdDb);
-  writeAudit("set_threshold", req.user!.email, { deviceId, thresholdDb });
-  broadcast({ type: "thresholds", thresholds: getThresholds() });
 
-  return res.json({ success: true });
+  try {
+    await writeThreshold(deviceId ?? null, thresholdDb);
+    await writeAuditPoint("set_threshold", req.user!.email, { deviceId, thresholdDb });
+    const thresholds = await queryThresholds();
+    broadcast({ type: "thresholds", thresholds });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: "InfluxDB write failed" });
+  }
 });
 
-router.get("/audit", (_req, res) => {
-  const logs = listAudit(100);
-  return res.json(logs);
+router.get("/audit", async (_req, res) => {
+  try {
+    const logs = await queryAuditLogs(100);
+    return res.json(logs);
+  } catch (err) {
+    return res.status(500).json({ error: "InfluxDB query failed" });
+  }
 });
 
 export default router;

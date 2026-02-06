@@ -2,10 +2,8 @@ import mqtt from "mqtt";
 import { z } from "zod";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-import { writeNoisePoint } from "./influx.js";
-import { insertNoiseHistory } from "./historyLocal.js";
+import { writeNoisePoint, queryThresholdForDevice } from "./influx.js";
 import { updateDevice } from "./deviceRegistry.js";
-import { getThresholdForDevice } from "./thresholds.js";
 import { broadcast } from "../ws.js";
 
 const noiseSchema = z.object({
@@ -34,8 +32,15 @@ export const startMqtt = () => {
 
   client.on("connect", () => {
     logger.info({ msg: "mqtt connected", broker: buildUrl() });
-    client.subscribe("campus/bruit/+/data", { qos: 0 });
-    client.subscribe("device/+/status", { qos: 1 });
+
+    // Subscribe to real sensor topics only
+    client.subscribe("$SYS/#", { qos: 0 });
+    client.subscribe("campus/#", { qos: 0 });
+    client.subscribe("bruit/#", { qos: 0 });
+    client.subscribe("A/#", { qos: 0 });
+    client.subscribe("data/#", { qos: 0 });
+
+    logger.info({ msg: "mqtt subscribed to topics", topics: ["$SYS/#", "campus/#", "bruit/#", "A/#", "data/#"] });
   });
 
   client.on("error", (err) => {
@@ -43,27 +48,30 @@ export const startMqtt = () => {
   });
 
   client.on("message", async (topic, payload) => {
-    if (topic.startsWith("campus/bruit/") && topic.endsWith("/data")) {
-      try {
-        const parsed = JSON.parse(payload.toString());
-        const data = noiseSchema.parse(parsed);
+    // Log every message received for debugging
+    logger.debug({ msg: "mqtt raw message", topic, payload: payload.toString().substring(0, 200) });
+
+    // Try to parse noise data from any topic
+    try {
+      const parsed = JSON.parse(payload.toString());
+      const result = noiseSchema.safeParse(parsed);
+
+      if (result.success) {
+        const data = result.data;
         const deviceId = data.sensor;
         const tsMs = normalizeTimestampMs(data.ts);
 
         updateDevice(deviceId, data.noise_db);
-        
-        // Store in local SQLite history
-        insertNoiseHistory(deviceId, data.noise_db, tsMs);
-        
-        // Write to InfluxDB (non-blocking, ignore errors if InfluxDB is down)
-        writeNoisePoint(deviceId, data.noise_db, tsMs).catch(err => {
-          logger.debug({ msg: "influxdb write skipped (not running)", deviceId });
+
+        // Write to InfluxDB
+        await writeNoisePoint(deviceId, data.noise_db, tsMs).catch(err => {
+          logger.warn({ msg: "influxdb write failed", deviceId, err: String(err) });
         });
 
-        const threshold = getThresholdForDevice(deviceId);
+        const threshold = await queryThresholdForDevice(deviceId).catch(() => null);
         const isAlert = threshold !== null && data.noise_db >= threshold;
 
-        logger.info({ msg: "mqtt data received", deviceId, noiseDb: data.noise_db, ts: tsMs, sensorTs: data.ts });
+        logger.info({ msg: "noise data received", topic, deviceId, noiseDb: data.noise_db, ts: tsMs });
 
         broadcast({
           type: "noise",
@@ -81,21 +89,20 @@ export const startMqtt = () => {
             ts: tsMs
           });
         }
-      } catch (err) {
-        logger.warn({ msg: "invalid mqtt payload", err, topic });
+        return;
       }
+    } catch {
+      // Not JSON or not noise data — that's fine, just log it
     }
 
-    if (topic.startsWith("device/") && topic.endsWith("/status")) {
-      const deviceId = topic.split("/")[1];
-      updateDevice(deviceId);
-      broadcast({
-        type: "device_status",
-        deviceId,
-        status: "ONLINE",
-        lastSeen: Date.now()
-      });
+    // For $SYS topics, just log
+    if (topic.startsWith("$SYS/")) {
+      logger.debug({ msg: "mqtt $SYS", topic, value: payload.toString().substring(0, 100) });
+      return;
     }
+
+    // For any other message, log it
+    logger.debug({ msg: "mqtt message (non-noise)", topic, payload: payload.toString().substring(0, 200) });
   });
 
   return client;

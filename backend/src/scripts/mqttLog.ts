@@ -14,15 +14,21 @@ const client = mqtt.connect(buildUrl(), {
 
 client.on("connect", () => {
   console.log("[MQTT] connected", buildUrl());
-  client.subscribe("campus/bruit/+/data", { qos: 0 });
+  // Subscribe to the real topics
+  client.subscribe("$SYS/#", { qos: 0 });
+  client.subscribe("campus/#", { qos: 0 });
+  client.subscribe("bruit/#", { qos: 0 });
+  client.subscribe("A/#", { qos: 0 });
+  client.subscribe("data/#", { qos: 0 });
+  console.log("[MQTT] subscribed to: $SYS/#, campus/#, bruit/#, A/#, data/#");
 });
 
 client.on("message", (_topic, payload) => {
   try {
     const parsed = JSON.parse(payload.toString()) as { sensor?: string; noise_db?: number; ts?: number };
-    console.log(`[DATA] sensor=${parsed.sensor} noise_db=${parsed.noise_db} ts=${parsed.ts}`);
+    console.log(`[DATA] topic=${_topic} sensor=${parsed.sensor} noise_db=${parsed.noise_db} ts=${parsed.ts}`);
   } catch (e) {
-    console.log("[DATA] raw:", payload.toString());
+    console.log(`[DATA] topic=${_topic} raw:`, payload.toString().substring(0, 200));
   }
 });
 
