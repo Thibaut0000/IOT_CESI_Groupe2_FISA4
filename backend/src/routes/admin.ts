@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { queryThresholds, writeThreshold, queryAuditLogs, writeAuditPoint } from "../services/influx.js";
+import bcrypt from "bcryptjs";
+import { queryThresholds, writeThreshold, queryAuditLogs, writeAuditPoint, writeUser, queryUsers, queryHistory } from "../services/influx.js";
 import { AuthedRequest, authenticate, requireRole } from "../middleware/auth.js";
 import { broadcast } from "../ws.js";
 
@@ -47,6 +48,57 @@ router.get("/audit", async (_req, res) => {
     return res.json(logs);
   } catch (err) {
     return res.status(500).json({ error: "InfluxDB query failed" });
+  }
+});
+
+// User management
+const userSchema = z.object({
+  email: z.string().min(3),
+  password: z.string().min(6),
+  role: z.enum(["admin", "user"])
+});
+
+router.get("/users", async (_req, res) => {
+  try {
+    const users = await queryUsers();
+    return res.json(users);
+  } catch (err) {
+    return res.status(500).json({ error: "InfluxDB query failed" });
+  }
+});
+
+router.post("/users", async (req: AuthedRequest, res) => {
+  const parsed = userSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Validation error", details: parsed.error.errors });
+
+  const { email, password, role } = parsed.data;
+  const hash = await bcrypt.hash(password, 10);
+
+  try {
+    await writeUser(email, hash, role);
+    await writeAuditPoint("create_user", req.user!.email, { email, role });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: "InfluxDB write failed" });
+  }
+});
+
+// CSV export
+router.get("/export/csv", async (req, res) => {
+  const deviceId = z.string().safeParse(req.query.deviceId);
+  const minutes = z.coerce.number().positive().default(60).safeParse(req.query.minutes);
+  if (!deviceId.success) return res.status(400).json({ error: "Missing deviceId" });
+
+  try {
+    const data = await queryHistory(deviceId.data, minutes.success ? minutes.data : 60);
+    const header = "timestamp,noise_db\n";
+    const rows = data.map((d: { _time: string; _value: number }) => `${d._time},${d._value}`).join("\n");
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename=noise_${deviceId.data}_${Date.now()}.csv`);
+    return res.send(header + rows);
+  } catch (err) {
+    return res.status(500).json({ error: "Export failed" });
   }
 });
 

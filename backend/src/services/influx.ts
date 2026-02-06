@@ -140,6 +140,25 @@ export const writeUser = async (
   await writeApi.flush();
 };
 
+export const queryUsers = async (): Promise<Array<{ email: string; role: string }>> => {
+  const queryApi = getQueryApi();
+  const q = `
+    from(bucket: "${metaBucket}")
+      |> range(start: 0)
+      |> filter(fn: (r) => r._measurement == "users")
+      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+      |> group(columns: ["email"])
+      |> sort(columns: ["_time"], desc: true)
+      |> limit(n: 1)
+      |> group()
+  `;
+  const results = await queryApi.collectRows(q);
+  return results.map((row: unknown) => {
+    const r = row as { email: string; role: string };
+    return { email: r.email, role: r.role };
+  });
+};
+
 export const queryUser = async (
   email: string
 ): Promise<{ email: string; password_hash: string; role: string } | null> => {

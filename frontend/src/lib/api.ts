@@ -62,5 +62,45 @@ export const api = {
     const res = await fetch(`${API_URL}/admin/audit`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Failed to fetch audit logs");
     return res.json();
+  },
+
+  // User management (admin)
+  getUsers: async () => {
+    const res = await fetch(`${API_URL}/admin/users`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Failed to fetch users");
+    return res.json();
+  },
+  createUser: async (email: string, password: string, role: string) => {
+    const res = await fetch(`${API_URL}/admin/users`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ email, password, role })
+    });
+    if (!res.ok) throw new Error("Failed to create user");
+    return res.json();
+  },
+
+  // Health status
+  getHealth: async () => {
+    const res = await fetch(`${API_URL}/health`);
+    if (!res.ok) throw new Error("Failed to fetch health");
+    return res.json();
+  },
+
+  // CSV export
+  downloadCSV: async (deviceId: string, minutes: number) => {
+    const token = useAuthStore.getState().token;
+    const res = await fetch(
+      `${API_URL}/admin/export/csv?deviceId=${deviceId}&minutes=${minutes}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) throw new Error("Failed to export CSV");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `noise_${deviceId}_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 };
