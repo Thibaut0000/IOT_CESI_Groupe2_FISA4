@@ -1,0 +1,29 @@
+import { WebSocketServer, WebSocket } from "ws";
+import { logger } from "./logger.js";
+
+type WsEvent =
+  | { type: "noise"; deviceId: string; noiseDb: number; ts: number }
+  | { type: "alert"; deviceId: string; noiseDb: number; thresholdDb: number; ts: number }
+  | { type: "device_status"; deviceId: string; status: "ONLINE" | "OFFLINE"; lastSeen: number }
+  | { type: "thresholds"; thresholds: Array<{ deviceId: string | null; thresholdDb: number }> };
+
+const clients = new Set<WebSocket>();
+let wss: WebSocketServer | null = null;
+
+export const initWebSocket = (server: any) => {
+  wss = new WebSocketServer({ server, path: "/ws" });
+  wss.on("connection", (ws) => {
+    clients.add(ws);
+    ws.on("close", () => clients.delete(ws));
+  });
+  logger.info({ msg: "websocket started" });
+};
+
+export const broadcast = (event: WsEvent) => {
+  const payload = JSON.stringify(event);
+  clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+};

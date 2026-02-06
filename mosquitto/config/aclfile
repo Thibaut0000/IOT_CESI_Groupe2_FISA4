@@ -1,0 +1,15 @@
+# Capteurs
+user deviceA
+topic write campus/bruit/A/data
+
+# API backend
+user api
+topic read campus/bruit/+/data
+topic read device/+/status
+topic write device/+/config
+
+# Admin
+user admin
+topic read campus/bruit/+/data
+topic read device/+/status
+topic write device/+/config

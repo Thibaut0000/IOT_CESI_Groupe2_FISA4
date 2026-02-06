@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.DS_Store
+*.log
+data/
+backend/data/
+frontend/dist/
+mosquitto/data/
+mosquitto/log/
