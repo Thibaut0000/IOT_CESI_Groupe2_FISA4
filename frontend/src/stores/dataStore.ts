@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import type { Device, NoiseDataPoint, Threshold, WsEvent } from "../types";
 
+// Persist muted devices in localStorage
+const MUTED_KEY = "muted-devices";
+const loadMuted = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(MUTED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch { return new Set(); }
+};
+const saveMuted = (s: Set<string>) => localStorage.setItem(MUTED_KEY, JSON.stringify([...s]));
+
 interface DataState {
   devices: Device[];
   currentNoise: Record<string, number>;
@@ -8,12 +18,15 @@ interface DataState {
   alerts: Array<{ deviceId: string; noiseDb: number; thresholdDb: number; ts: number }>;
   // Live chart data from WebSocket (last 300 points per device)
   liveHistory: Record<string, NoiseDataPoint[]>;
+  /** Devices whose notifications are muted */
+  mutedDevices: Set<string>;
   setDevices: (devices: Device[]) => void;
   updateDevice: (deviceId: string, data: Partial<Device>) => void;
   setNoise: (deviceId: string, noiseDb: number) => void;
   setThresholds: (thresholds: Threshold[]) => void;
   addAlert: (alert: { deviceId: string; noiseDb: number; thresholdDb: number; ts: number }) => void;
   clearAlerts: () => void;
+  toggleMute: (deviceId: string) => void;
   handleWsEvent: (event: WsEvent) => void;
 }
 
@@ -25,6 +38,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
   thresholds: [],
   alerts: [],
   liveHistory: {},
+  mutedDevices: loadMuted(),
   setDevices: (devices) => set({ devices }),
   updateDevice: (deviceId, data) =>
     set((state) => ({
@@ -35,6 +49,12 @@ export const useDataStore = create<DataState>()((set, get) => ({
   setThresholds: (thresholds) => set({ thresholds }),
   addAlert: (alert) => set((state) => ({ alerts: [...state.alerts.slice(-49), alert] })),
   clearAlerts: () => set({ alerts: [] }),
+  toggleMute: (deviceId) => set((state) => {
+    const next = new Set(state.mutedDevices);
+    if (next.has(deviceId)) next.delete(deviceId); else next.add(deviceId);
+    saveMuted(next);
+    return { mutedDevices: next };
+  }),
   handleWsEvent: (event) => {
     const state = get();
     switch (event.type) {

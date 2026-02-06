@@ -41,6 +41,7 @@ function playAlertSound(level: "warning" | "danger") {
 
 export default function ToastContainer() {
   const alerts = useDataStore((s) => s.alerts);
+  const mutedDevices = useDataStore((s) => s.mutedDevices);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [lastAlertCount, setLastAlertCount] = useState(0);
 
@@ -50,7 +51,7 @@ export default function ToastContainer() {
 
   useEffect(() => {
     if (alerts.length > lastAlertCount) {
-      const newAlerts = alerts.slice(lastAlertCount);
+      const newAlerts = alerts.slice(lastAlertCount).filter((a) => !mutedDevices.has(a.deviceId));
       const newToasts: Toast[] = newAlerts.map((a) => {
         const level = a.noiseDb >= 85 ? "danger" as const : "warning" as const;
         playAlertSound(level);

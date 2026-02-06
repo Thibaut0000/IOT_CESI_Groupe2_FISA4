@@ -26,6 +26,8 @@ export default function Dashboard() {
   const devices = useDataStore((s) => s.devices);
   const currentNoise = useDataStore((s) => s.currentNoise);
   const liveHistory = useDataStore((s) => s.liveHistory);
+  const mutedDevices = useDataStore((s) => s.mutedDevices);
+  const toggleMute = useDataStore((s) => s.toggleMute);
   const setDevices = useDataStore((s) => s.setDevices);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [history, setHistory] = useState<NoiseDataPoint[]>([]);
@@ -177,6 +179,8 @@ export default function Dashboard() {
               selected={selectedDevice}
               onSelect={setSelectedDevice}
               currentNoise={currentNoise}
+              mutedDevices={mutedDevices}
+              onToggleMute={toggleMute}
             />
           </div>
         </div>
