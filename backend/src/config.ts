@@ -23,5 +23,9 @@ export const config = {
     org: process.env.INFLUX_ORG ?? "cesi",
     bucket: process.env.INFLUX_BUCKET ?? "bruit"
   },
+  defaultAdmin: {
+    email: process.env.DEFAULT_ADMIN_EMAIL ?? "admin@local",
+    password: process.env.DEFAULT_ADMIN_PASSWORD ?? "Admin123!"
+  },
   offlineThresholdSeconds: Number(process.env.OFFLINE_THRESHOLD_SECONDS ?? 10)
 };

@@ -1,101 +1,177 @@
-# Web IOT - Bruit (MQTT ➜ API ➜ Dashboard)
+# Web IOT – Bruit Campus (MQTT ➜ API ➜ Dashboard)
 
-Stack locale moderne avec ingestion MQTT, historisation InfluxDB, API Node.js/Express, et dashboard React.
+Stack locale : ingestion MQTT, historisation InfluxDB, API Node.js/Express, dashboard React.
 
-##  Contraintes respectées
+## Contraintes respectées
 - Le navigateur ne se connecte **jamais** à MQTT.
 - Ingestion MQTT côté API uniquement.
-- Auth JWT + RBAC (admin/user).
+- Auth JWT + RBAC (admin / user).
 - Historisation InfluxDB 2.x.
-- Détection offline (>10s configurable).
-- Logs JSON + audit admin.
-- Déploiement local Docker principal.
+- Détection offline (seuil configurable).
+- Logs JSON (Pino) + audit admin.
+- Déploiement local Docker.
+- **MQTT sécurisé** : TLS (port 8883) + authentification + ACL.
 
 ## Architecture
-```
-Capteurs ➜ MQTT (broker existant) ➜ API (MQTT client) ➜ InfluxDB + WebSocket ➜ Front
+
+```text
+Arduino (ZigBee/UART) ──► MQTT (Mosquitto TLS) ──► API Node.js ──► InfluxDB
+                                                         │
+                                                         └──► WebSocket ──► Dashboard React
 ```
 
 ## Prérequis
-- Docker + Docker Compose
-- Node.js 18+ (si exécution hors Docker)
+- Docker & Docker Compose
 
-## Configuration
-Copier et ajuster le fichier d’environnement :
-```
-cp .env.example .env
-```
-**IMPORTANT**: le broker réel est déjà en place.
-Par défaut :
-- MQTT_HOST=172.20.10.2
-- MQTT_PORT=1883
+---
 
-## Lancer en local (Docker)
-```
-docker compose up --build
-```
-- API: http://localhost:4000
-- Front: http://localhost:5173
-- InfluxDB: http://localhost:8086
+## 🚀 Démarrage rapide
 
-## Créer un admin
 ```bash
-cd backend
-npm install
-npx tsx src/scripts/createAdmin.ts --email admin@local --password Admin123!
+git clone <url-du-repo>
+cd Web_IOT
+docker compose --profile local-broker up -d --build
 ```
 
-## Endpoints principaux
-- POST /auth/login
-- GET /devices
-- GET /metrics/latest?deviceId=A
-- GET /metrics/history?deviceId=A&minutes=30
-- GET /metrics/stats?deviceId=A&minutes=60
+**C'est tout.** L'admin par défaut est créé automatiquement au premier lancement.
 
-Admin (JWT role=admin):
-- POST /admin/thresholds
-- GET /admin/thresholds
-- GET /admin/audit
+| Service   | URL                   |
+|-----------|-----------------------|
+| Dashboard | http://localhost:5173  |
+| API       | http://localhost:4000  |
+| InfluxDB  | http://localhost:8086  |
 
-## MQTT (réel)
-Topics effectivement utilisés:
-- campus/bruit/+/data
+### Connexion au dashboard
 
-Payload JSON:
-```
+| Champ        | Valeur         |
+|--------------|----------------|
+| Email        | `admin@local`  |
+| Mot de passe | `Admin123!`    |
+
+> 💡 Modifiable via `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` dans le `.env`.
+
+---
+
+## Configuration (.env)
+
+Le `.env` est versionné (projet local entre amis). Variables principales :
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `MQTT_HOST` | `mosquitto` | Hostname du broker |
+| `MQTT_PORT` | `8883` | Port MQTTS (TLS) |
+| `MQTT_USERNAME` | `api` | User MQTT côté API |
+| `MQTT_PASSWORD` | `ChangeMe123!` | Mot de passe MQTT API |
+| `MQTT_TLS` | `true` | Activer TLS |
+| `INFLUX_URL` | `http://influxdb:8086` | URL InfluxDB |
+| `INFLUX_TOKEN` | *(dans .env)* | Token InfluxDB |
+| `INFLUX_ORG` | `cesi` | Organisation InfluxDB |
+| `INFLUX_BUCKET` | `bruit` | Bucket principal |
+| `DEFAULT_ADMIN_EMAIL` | `admin@local` | Email admin auto-créé |
+| `DEFAULT_ADMIN_PASSWORD` | `Admin123!` | Mot de passe admin |
+| `OFFLINE_THRESHOLD_SECONDS` | `10` | Seuil détection offline |
+
+---
+
+## MQTT – Topics & Payloads
+
+### Données bruit
+
+Topic : `campus/bruit/<zone>/db`
+
+```json
 {
-  "sensor": "A",
-  "noise_db": 60.3,
-  "ts": 943007
+  "db": 65.3,
+  "sensorId": "sensorA",
+  "zone": "demo_salle",
+  "ts": 1770730108
 }
 ```
 
-## Mosquitto (config TLS/ACL exemple)
-Les fichiers de config sont prêts dans [mosquitto/config](mosquitto/config) et un script de génération de certificats DEV est disponible.
-Le service Mosquitto Docker est optionnel via profile `local-broker`.
+### Statut capteur
 
-## Notes sécurité
-- MQTT TLS et ACL sont fournis comme exemple.
-- L’auth REST est JWT.
-- Les mots de passe sont hashés bcrypt.
+Topic : `campus/bruit/<zone>/status`
+
+```json
+{
+  "online": true,
+  "sensorId": "A",
+  "zone": "demo_salle",
+  "ts": 1770730108
+}
+```
+
+> `ts` = epoch **secondes** (NTP). Le backend normalise en millisecondes si nécessaire.
+
+### Credentials MQTT (Arduino)
+
+| User | Mot de passe | Droits |
+|------|-------------|--------|
+| `deviceA` | `ChangeMe123!` | Publish `campus/bruit/+/db` et `campus/bruit/+/status` |
+| `api` | `ChangeMe123!` | Subscribe `campus/bruit/#` et `$SYS/#` |
+
+---
+
+## Sécurité MQTT (TLS)
+
+Mosquitto est configuré avec :
+- **TLS** sur le port `8883` (certificats auto-signés dans `mosquitto/config/certs/`)
+- **Port 1883** disponible en fallback (plain, pour les Arduinos sans TLS)
+- **`allow_anonymous false`** — authentification obligatoire
+- **ACL** par utilisateur (`mosquitto/config/aclfile`)
+
+Régénérer les certificats dev :
+
+```bash
+cd mosquitto/config/certs
+sh gen-dev-certs.sh
+```
+
+---
+
+## Endpoints API
+
+### Publics
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| POST | `/auth/login` | Connexion → JWT |
+| GET | `/health` | Statut MQTT + InfluxDB |
+
+### Authentifiés (JWT Bearer)
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| GET | `/devices` | Liste des capteurs |
+| GET | `/metrics/latest?deviceId=X` | Dernière mesure |
+| GET | `/metrics/history?deviceId=X&minutes=30` | Historique |
+| GET | `/metrics/stats?deviceId=X&minutes=60` | Stats (min/max/moy) |
+
+### Admin (JWT role=admin)
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| GET/POST | `/admin/thresholds` | Seuils d'alerte |
+| GET | `/admin/audit` | Logs d'audit |
+| GET/POST | `/admin/users` | Gestion utilisateurs |
+| GET | `/admin/export/csv?deviceId=X&minutes=60` | Export CSV |
+
+---
 
 ## Développement (sans Docker)
+
 ### Backend
-```
+
+```bash
 cd backend
 npm install
 npm run dev
 ```
 
 ### Frontend
-```
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-## Propositions d’amélioration (optionnelles)
-- Ajout WebSocket par device (filtrage client)
-- Statistiques avancées (boxplot, percentiles)
-- Exports CSV
-- Mode maintenance pour capteur

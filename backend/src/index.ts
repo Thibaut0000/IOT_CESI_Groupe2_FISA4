@@ -1,12 +1,13 @@
 import express from "express";
 import cors from "cors";
 import http from "http";
+import bcrypt from "bcryptjs";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { initWebSocket, broadcast } from "./ws.js";
 import { startMqtt, getMqttStatus } from "./services/mqtt.js";
 import { checkOffline, listDevices } from "./services/deviceRegistry.js";
-import { initInflux } from "./services/influx.js";
+import { initInflux, queryUsers, writeUser } from "./services/influx.js";
 
 // Routes
 import authRoutes from "./routes/auth.js";
@@ -43,11 +44,26 @@ const server = http.createServer(app);
 
 initWebSocket(server);
 
-// Init InfluxDB then start MQTT
+// Auto-create default admin if no users exist yet
+const seedDefaultAdmin = async () => {
+  try {
+    const users = await queryUsers();
+    if (users.length > 0) return;
+    const { email, password } = config.defaultAdmin;
+    const hash = await bcrypt.hash(password, 10);
+    await writeUser(email, hash, "admin");
+    logger.info({ msg: "default admin created", email });
+  } catch (err) {
+    logger.warn({ msg: "failed to seed default admin", err: String(err) });
+  }
+};
+
+// Init InfluxDB then seed admin + start MQTT
 initInflux()
-  .then(() => {
+  .then(async () => {
     influxReady = true;
     logger.info({ msg: "influxdb initialized" });
+    await seedDefaultAdmin();
     startMqtt();
   })
   .catch((err) => {
