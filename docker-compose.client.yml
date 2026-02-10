@@ -13,5 +13,8 @@
 # Le TLS reste actif (le CA cert est dans le repo).
 
 services:
+  influxdb:
+    profiles: ["server-only"]
+
   api:
     depends_on: {}
