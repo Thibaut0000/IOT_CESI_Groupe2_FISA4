@@ -60,11 +60,11 @@ Si un membre de l'équipe fait tourner toute la stack (InfluxDB + Mosquitto), le
 ```
 INFLUX_URL=http://<IP_SERVEUR>:8086
 MQTT_HOST=<IP_SERVEUR>
-MQTT_PORT=1883
-MQTT_TLS=false
 VITE_API_BASE_URL=http://localhost:4000
 VITE_WS_URL=ws://localhost:4000/ws
 ```
+
+> Le TLS reste actif — le certificat CA est dans le repo (`mosquitto/config/certs/ca.crt`).
 
 2. Lancer en mode client :
 ```bash
