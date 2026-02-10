@@ -51,20 +51,49 @@ export const startMqtt = () => {
     username: config.mqtt.username,
     password: config.mqtt.password,
     reconnectPeriod: 2000,
+    clean: false,        // persistent session: broker queues QoS 1 messages while we are offline
+    clientId: `iot-api-${process.pid}`,
     ...(config.mqtt.tls ? { rejectUnauthorized: true } : {}),
     ...tlsOptions
+  });
+
+  logger.info({
+    msg: "mqtt client options",
+    cleanSession: false,
+    clientId: `iot-api-${process.pid}`,
+    reconnectPeriod: 2000,
+    tls: config.mqtt.tls,
+    broker: buildUrl()
   });
 
   client.on("connect", () => {
     mqttStatus = "connected";
     logger.info({ msg: "mqtt connected", broker: buildUrl() });
 
-    // Subscribe to sensor topics: campus/bruit/<zone>/db and campus/bruit/<zone>/status
-    client.subscribe("campus/bruit/+/db", { qos: 0 });
-    client.subscribe("campus/bruit/+/status", { qos: 0 });
-    client.subscribe("$SYS/#", { qos: 0 });
+    // ── QoS strategy ────────────────────────────────────────────────
+    // • db  (noise telemetry) → QoS 0 : best-effort, high frequency,
+    //   losing one sample is acceptable (next arrives in < 5 s).
+    // • status (online/offline) → QoS 1 : at-least-once delivery,
+    //   missing a status change could leave a device shown as ONLINE
+    //   when it is actually OFFLINE. retain=true on publish side so
+    //   new subscribers get the last known state immediately.
+    // • $SYS → QoS 0 : broker diagnostics, best-effort.
+    // ────────────────────────────────────────────────────────────────
 
-    logger.info({ msg: "mqtt subscribed to topics", topics: ["campus/bruit/+/db", "campus/bruit/+/status", "$SYS/#"] });
+    client.subscribe("campus/bruit/+/db", { qos: 0 }, (err, granted) => {
+      if (err) { logger.error({ msg: "mqtt subscribe error", topic: "campus/bruit/+/db", err }); return; }
+      logger.info({ msg: "mqtt subscribed", topic: granted![0].topic, qos: granted![0].qos, reason: "QoS 0 – best-effort telemetry, high frequency" });
+    });
+
+    client.subscribe("campus/bruit/+/status", { qos: 1 }, (err, granted) => {
+      if (err) { logger.error({ msg: "mqtt subscribe error", topic: "campus/bruit/+/status", err }); return; }
+      logger.info({ msg: "mqtt subscribed", topic: granted![0].topic, qos: granted![0].qos, reason: "QoS 1 – at-least-once, critical state change" });
+    });
+
+    client.subscribe("$SYS/#", { qos: 0 }, (err, granted) => {
+      if (err) { logger.error({ msg: "mqtt subscribe error", topic: "$SYS/#", err }); return; }
+      logger.info({ msg: "mqtt subscribed", topic: granted![0].topic, qos: granted![0].qos, reason: "QoS 0 – broker diagnostics" });
+    });
   });
 
   client.on("error", (err) => {
@@ -78,10 +107,32 @@ export const startMqtt = () => {
 
   client.on("reconnect", () => {
     mqttStatus = "reconnecting";
+    logger.info({ msg: "mqtt reconnecting", cleanSession: false, note: "persistent session – broker will deliver queued QoS 1 messages" });
   });
 
-  client.on("message", async (topic, payload) => {
-    logger.debug({ msg: "mqtt raw message", topic, payload: payload.toString().substring(0, 200) });
+  // ── Protocol-level logging (proves QoS handshake) ──────────────
+  client.on("packetsend", (packet: any) => {
+    if (packet.cmd === "subscribe") {
+      logger.debug({ msg: "mqtt SUBSCRIBE sent", subscriptions: packet.subscriptions });
+    }
+    if (packet.cmd === "puback") {
+      logger.debug({ msg: "mqtt PUBACK sent", messageId: packet.messageId, note: "acknowledging QoS 1 message from broker" });
+    }
+  });
+
+  client.on("packetreceive", (packet: any) => {
+    if (packet.cmd === "suback") {
+      logger.info({ msg: "mqtt SUBACK received", granted: packet.granted, note: "broker confirmed subscription QoS levels" });
+    }
+    if (packet.cmd === "publish" && packet.qos === 1) {
+      logger.debug({ msg: "mqtt QoS 1 PUBLISH received", topic: packet.topic, messageId: packet.messageId, retain: packet.retain, dup: packet.dup });
+    }
+  });
+
+  client.on("message", async (topic, payload, packet) => {
+    const qos = (packet as any).qos ?? 0;
+    const retain = (packet as any).retain ?? false;
+    logger.debug({ msg: "mqtt raw message", topic, qos, retain, payload: payload.toString().substring(0, 200) });
 
     // $SYS topics – just log
     if (topic.startsWith("$SYS/")) {
@@ -121,7 +172,20 @@ export const startMqtt = () => {
 
       setDeviceStatus(deviceId, zone, status);
 
-      logger.info({ msg: "device status from sensor", deviceId, zone, online });
+      logger.info({
+        msg: "device status from sensor",
+        deviceId,
+        zone,
+        online,
+        qos,
+        retain,
+        note: qos === 1
+          ? "QoS 1 – delivery guaranteed by broker (PUBACK)"
+          : "QoS 0 – best-effort (consider publishing with QoS 1)",
+        retainNote: retain
+          ? "retained message – last known state delivered to new subscriber"
+          : "non-retained – only live subscribers received this"
+      });
 
       broadcast({
         type: "device_status",
@@ -154,7 +218,7 @@ export const startMqtt = () => {
       const threshold = await queryThresholdForDevice(deviceId).catch(() => null);
       const isAlert = threshold !== null && noiseDb >= threshold;
 
-      logger.info({ msg: "noise data received", topic, deviceId, zone, noiseDb, ts: tsMs });
+      logger.info({ msg: "noise data received", topic, deviceId, zone, noiseDb, ts: tsMs, qos, retain });
 
       broadcast({
         type: "noise",
