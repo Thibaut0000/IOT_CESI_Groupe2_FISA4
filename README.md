@@ -52,6 +52,29 @@ docker compose --profile local-broker up -d --build
 
 ---
 
+## 🖥️ Mode client (front uniquement, serveur chez quelqu'un d'autre)
+
+Si un membre de l'équipe fait tourner toute la stack (InfluxDB + Mosquitto), les autres peuvent ne lancer que l'API + le frontend chez eux.
+
+1. Modifier le `.env` :
+```
+INFLUX_URL=http://<IP_SERVEUR>:8086
+MQTT_HOST=<IP_SERVEUR>
+MQTT_PORT=1883
+MQTT_TLS=false
+VITE_API_BASE_URL=http://localhost:4000
+VITE_WS_URL=ws://localhost:4000/ws
+```
+
+2. Lancer en mode client :
+```bash
+docker compose -f docker-compose.yml -f docker-compose.client.yml up -d --build api web
+```
+
+Seuls les conteneurs API et frontend démarrent — pas d'InfluxDB ni de Mosquitto en local.
+
+---
+
 ## Configuration (.env)
 
 Le `.env` est versionné (projet local entre amis). Variables principales :

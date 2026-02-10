@@ -1,0 +1,15 @@
+# Mode client : API + Frontend uniquement
+# Les services InfluxDB et Mosquitto tournent sur la machine du serveur.
+#
+# Usage :
+#   docker compose -f docker-compose.yml -f docker-compose.client.yml up -d --build api web
+#
+# Avant de lancer, modifier le .env :
+#   INFLUX_URL=http://<IP_SERVEUR>:8086
+#   MQTT_HOST=<IP_SERVEUR>
+#   VITE_API_BASE_URL=http://localhost:4000
+#   VITE_WS_URL=ws://localhost:4000/ws
+
+services:
+  api:
+    depends_on: {}
