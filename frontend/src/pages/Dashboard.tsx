@@ -49,8 +49,16 @@ export default function Dashboard() {
   useEffect(() => {
     if (!selectedDevice) return;
     const fetchData = () => {
-      api.getMetricsHistory(selectedDevice, historyMinutes).then(setHistory).catch(console.error);
-      api.getMetricsStats(selectedDevice, historyMinutes).then(setStats).catch(console.error);
+      api.getMetricsHistory(selectedDevice, historyMinutes)
+        .then(setHistory)
+        .catch((err) => {
+          if (err.message !== "Session expired – please log in again") console.error("History fetch error:", err);
+        });
+      api.getMetricsStats(selectedDevice, historyMinutes)
+        .then(setStats)
+        .catch((err) => {
+          if (err.message !== "Session expired – please log in again") console.error("Stats fetch error:", err);
+        });
     };
     fetchData();
     const interval = setInterval(fetchData, 15000);

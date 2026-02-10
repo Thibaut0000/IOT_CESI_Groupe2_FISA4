@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import fs from "fs";
 import { config } from "../config.js";
 
 const buildUrl = () => {
@@ -6,10 +7,15 @@ const buildUrl = () => {
   return `${protocol}://${config.mqtt.host}:${config.mqtt.port}`;
 };
 
+const tlsOptions = config.mqtt.tls && config.mqtt.caCert
+  ? { ca: fs.readFileSync(config.mqtt.caCert), rejectUnauthorized: true }
+  : {};
+
 const client = mqtt.connect(buildUrl(), {
   username: config.mqtt.username,
   password: config.mqtt.password,
-  reconnectPeriod: 2000
+  reconnectPeriod: 2000,
+  ...tlsOptions
 });
 
 client.on("connect", () => {

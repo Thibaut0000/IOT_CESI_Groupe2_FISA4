@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   influxdb:
     image: influxdb:2.7
@@ -34,11 +32,13 @@ services:
       - API_PORT=4000
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - LOG_LEVEL=${LOG_LEVEL}
       - MQTT_HOST=${MQTT_HOST}
       - MQTT_PORT=${MQTT_PORT}
       - MQTT_USERNAME=${MQTT_USERNAME}
       - MQTT_PASSWORD=${MQTT_PASSWORD}
       - MQTT_TLS=${MQTT_TLS}
+      - MQTT_CA_CERT=${MQTT_CA_CERT}
       - INFLUX_URL=${INFLUX_URL}
       - INFLUX_TOKEN=${INFLUX_TOKEN}
       - INFLUX_ORG=${INFLUX_ORG}
@@ -46,6 +46,7 @@ services:
       - OFFLINE_THRESHOLD_SECONDS=${OFFLINE_THRESHOLD_SECONDS}
     volumes:
       - ./backend/data:/app/data
+      - ./mosquitto/config/certs:/certs:ro
     depends_on:
       influxdb:
         condition: service_healthy

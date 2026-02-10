@@ -14,7 +14,8 @@ export const config = {
     port: Number(process.env.MQTT_PORT ?? 1883),
     username: process.env.MQTT_USERNAME || undefined,
     password: process.env.MQTT_PASSWORD || undefined,
-    tls: toBool(process.env.MQTT_TLS)
+    tls: toBool(process.env.MQTT_TLS),
+    caCert: process.env.MQTT_CA_CERT || undefined
   },
   influx: {
     url: process.env.INFLUX_URL ?? "http://localhost:8086",

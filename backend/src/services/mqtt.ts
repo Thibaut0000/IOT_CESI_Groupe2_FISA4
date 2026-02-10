@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import fs from "fs";
 import { z } from "zod";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
@@ -38,10 +39,20 @@ const normalizeTimestampMs = (sensorTs: number) => {
 };
 
 export const startMqtt = () => {
+  const tlsOptions = config.mqtt.tls && config.mqtt.caCert
+    ? { ca: fs.readFileSync(config.mqtt.caCert) }
+    : {};
+
+  if (config.mqtt.tls && !config.mqtt.caCert) {
+    logger.warn({ msg: "mqtt tls enabled but MQTT_CA_CERT not set; broker cert will not be verified" });
+  }
+
   const client = mqtt.connect(buildUrl(), {
     username: config.mqtt.username,
     password: config.mqtt.password,
-    reconnectPeriod: 2000
+    reconnectPeriod: 2000,
+    ...(config.mqtt.tls ? { rejectUnauthorized: true } : {}),
+    ...tlsOptions
   });
 
   client.on("connect", () => {

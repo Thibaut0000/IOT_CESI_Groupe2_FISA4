@@ -1,12 +1,18 @@
+# Dépendances
 node_modules/
+
+# Build
 dist/
 coverage/
-.env
-.env.local
+*.tsbuildinfo
+
+# OS
 .DS_Store
-*.log
+
+# InfluxDB data (volumineux, généré)
 data/
 backend/data/
-frontend/dist/
+
+# Mosquitto runtime (spécifique à la machine qui fait tourner le broker)
 mosquitto/data/
 mosquitto/log/

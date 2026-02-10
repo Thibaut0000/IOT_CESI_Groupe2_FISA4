@@ -1,15 +1,15 @@
-# Capteurs
+# ── Capteurs ─────────────────────────────────────────────
+# Chaque capteur peut publier sur n'importe quelle zone
 user deviceA
-topic write campus/bruit/A/data
+topic write campus/bruit/+/db
+topic write campus/bruit/+/status
 
-# API backend
+# ── API backend ──────────────────────────────────────────
 user api
-topic read campus/bruit/+/data
-topic read device/+/status
-topic write device/+/config
+topic read campus/bruit/+/db
+topic read campus/bruit/+/status
+topic read $SYS/#
 
-# Admin
+# ── Admin (optionnel, debug) ─────────────────────────────
 user admin
-topic read campus/bruit/+/data
-topic read device/+/status
-topic write device/+/config
+topic readwrite #

@@ -10,6 +10,15 @@ const getHeaders = () => {
   };
 };
 
+/** Handle 401 responses by logging out and redirecting to login */
+const handleUnauthorized = (res: Response) => {
+  if (res.status === 401) {
+    useAuthStore.getState().logout();
+    window.location.href = "/login";
+    throw new Error("Session expired – please log in again");
+  }
+};
+
 export const api = {
   login: async (email: string, password: string) => {
     const res = await fetch(`${API_URL}/auth/login`, {
@@ -22,11 +31,13 @@ export const api = {
   },
   getDevices: async () => {
     const res = await fetch(`${API_URL}/devices`, { headers: getHeaders() });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch devices");
     return res.json();
   },
   getMetricsLatest: async (deviceId: string) => {
     const res = await fetch(`${API_URL}/metrics/latest?deviceId=${deviceId}`, { headers: getHeaders() });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch latest metrics");
     return res.json();
   },
@@ -34,6 +45,7 @@ export const api = {
     const res = await fetch(`${API_URL}/metrics/history?deviceId=${deviceId}&minutes=${minutes}`, {
       headers: getHeaders()
     });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch history");
     return res.json();
   },
@@ -41,11 +53,13 @@ export const api = {
     const res = await fetch(`${API_URL}/metrics/stats?deviceId=${deviceId}&minutes=${minutes}`, {
       headers: getHeaders()
     });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch stats");
     return res.json();
   },
   getThresholds: async () => {
     const res = await fetch(`${API_URL}/admin/thresholds`, { headers: getHeaders() });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch thresholds");
     return res.json();
   },
@@ -55,11 +69,13 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ deviceId, thresholdDb })
     });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to set threshold");
     return res.json();
   },
   getAudit: async () => {
     const res = await fetch(`${API_URL}/admin/audit`, { headers: getHeaders() });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch audit logs");
     return res.json();
   },
@@ -67,6 +83,7 @@ export const api = {
   // User management (admin)
   getUsers: async () => {
     const res = await fetch(`${API_URL}/admin/users`, { headers: getHeaders() });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to fetch users");
     return res.json();
   },
@@ -76,6 +93,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ email, password, role })
     });
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to create user");
     return res.json();
   },
@@ -94,6 +112,7 @@ export const api = {
       `${API_URL}/admin/export/csv?deviceId=${deviceId}&minutes=${minutes}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
+    handleUnauthorized(res);
     if (!res.ok) throw new Error("Failed to export CSV");
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);

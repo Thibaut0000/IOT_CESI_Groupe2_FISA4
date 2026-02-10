@@ -9,10 +9,10 @@ export const useWebSocket = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const handleWsEvent = useDataStore((s) => s.handleWsEvent);
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const token = useAuthStore((s) => s.token);
 
   const connect = useCallback(() => {
-    if (!isAuthenticated()) return;
+    if (!token) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const ws = new WebSocket(WS_URL);
@@ -35,7 +35,7 @@ export const useWebSocket = () => {
     };
 
     ws.onerror = (err) => console.error("[WS] error", err);
-  }, [handleWsEvent, isAuthenticated]);
+  }, [handleWsEvent, token]);
 
   useEffect(() => {
     connect();
