@@ -130,8 +130,8 @@ Topic : `campus/bruit/<zone>/status`
 
 | User | Mot de passe | Droits |
 |------|-------------|--------|
-| `deviceA` | `ChangeMe123!` | Publish `campus/bruit/+/db` et `campus/bruit/+/status` |
-| `api` | `ChangeMe123!` | Subscribe `campus/bruit/#` et `$SYS/#` |
+| `deviceA` | `ChangeMe123!` | Publish `campus/bruit/+/db` (QoS 0) et `campus/bruit/+/status` (QoS 1, retain) |
+| `api` | `ChangeMe123!` | Subscribe `campus/bruit/+/db` (QoS 0) et `campus/bruit/+/status` (QoS 1) et `$SYS/#` (QoS 0) |
 
 ---
 
