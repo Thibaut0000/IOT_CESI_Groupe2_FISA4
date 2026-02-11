@@ -5,7 +5,8 @@ type WsEvent =
   | { type: "noise"; deviceId: string; zone: string; noiseDb: number; ts: number }
   | { type: "alert"; deviceId: string; zone: string; noiseDb: number; thresholdDb: number; ts: number }
   | { type: "device_status"; deviceId: string; zone: string; status: "ONLINE" | "OFFLINE"; lastSeen: number }
-  | { type: "thresholds"; thresholds: Array<{ deviceId: string | null; thresholdDb: number }> };
+  | { type: "thresholds"; thresholds: Array<{ deviceId: string | null; thresholdDb: number }> }
+  | { type: "device_config"; deviceId: string; enabled?: boolean; ecoMode?: boolean };
 
 const clients = new Set<WebSocket>();
 let wss: WebSocketServer | null = null;

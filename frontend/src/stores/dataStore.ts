@@ -115,6 +115,17 @@ export const useDataStore = create<DataState>()((set, get) => ({
       case "thresholds":
         state.setThresholds(event.thresholds);
         break;
+      case "device_config":
+        {
+          const existing = state.devices.find((d) => d.deviceId === event.deviceId);
+          if (existing) {
+            const update: Partial<Device> = {};
+            if (event.enabled !== undefined) update.enabled = event.enabled;
+            if (event.ecoMode !== undefined) update.ecoMode = event.ecoMode;
+            state.updateDevice(event.deviceId, update);
+          }
+        }
+        break;
     }
   }
 }));

@@ -4,8 +4,10 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { writeNoisePoint, queryThresholdForDevice } from "./influx.js";
-import { updateDevice, setDeviceStatus } from "./deviceRegistry.js";
+import { updateDevice, setDeviceStatus, setDeviceEnabled, setDeviceEcoMode } from "./deviceRegistry.js";
 import { broadcast } from "../ws.js";
+
+let mqttClient: mqtt.MqttClient | null = null;
 
 // campus/bruit/<zone>/db  →  { db: number, sensorId: string, zone: string, ts: number }
 const dbSchema = z.object({
@@ -23,9 +25,35 @@ const statusSchema = z.object({
   ts: z.number()
 });
 
+// campus/bruit/<zone>/cmd_ack → { sensorId, ack, ts }
+const cmdAckSchema = z.object({
+  sensorId: z.string().min(1),
+  ack: z.string().min(1),
+  ts: z.number()
+});
+
 let mqttStatus: "connected" | "disconnected" | "reconnecting" = "disconnected";
 
 export const getMqttStatus = () => mqttStatus;
+
+/**
+ * Publish a command to the gateway via MQTT.
+ * The gateway will relay it to the sensor over Zigbee.
+ */
+export const publishCommand = (sensorId: string, action: string) => {
+  if (!mqttClient) {
+    logger.warn({ msg: "mqtt client not available, cannot publish command" });
+    return;
+  }
+  const payload = JSON.stringify({ sensorId, action });
+  mqttClient.publish("campus/bruit/cmd", payload, { qos: 1 }, (err) => {
+    if (err) {
+      logger.error({ msg: "mqtt command publish failed", sensorId, action, err });
+    } else {
+      logger.info({ msg: "mqtt command published", sensorId, action });
+    }
+  });
+};
 
 const buildUrl = () => {
   const protocol = config.mqtt.tls ? "mqtts" : "mqtt";
@@ -56,6 +84,8 @@ export const startMqtt = () => {
     ...(config.mqtt.tls ? { rejectUnauthorized: true } : {}),
     ...tlsOptions
   });
+
+  mqttClient = client;
 
   logger.info({
     msg: "mqtt client options",
@@ -93,6 +123,12 @@ export const startMqtt = () => {
     client.subscribe("$SYS/#", { qos: 0 }, (err, granted) => {
       if (err) { logger.error({ msg: "mqtt subscribe error", topic: "$SYS/#", err }); return; }
       logger.info({ msg: "mqtt subscribed", topic: granted![0].topic, qos: granted![0].qos, reason: "QoS 0 – broker diagnostics" });
+    });
+
+    // Subscribe to command ACKs from gateways
+    client.subscribe("campus/bruit/+/cmd_ack", { qos: 1 }, (err, granted) => {
+      if (err) { logger.error({ msg: "mqtt subscribe error", topic: "campus/bruit/+/cmd_ack", err }); return; }
+      logger.info({ msg: "mqtt subscribed", topic: granted![0].topic, qos: granted![0].qos, reason: "QoS 1 – command acknowledgments" });
     });
   });
 
@@ -194,6 +230,33 @@ export const startMqtt = () => {
         status,
         lastSeen: tsMs
       });
+      return;
+    }
+
+    // ── Handle command ACK messages ────────────────────────
+    if (msgType === "cmd_ack") {
+      const result = cmdAckSchema.safeParse(parsed);
+      if (!result.success) {
+        logger.warn({ msg: "mqtt cmd_ack parse failed", topic, errors: result.error.errors });
+        return;
+      }
+      const { sensorId, ack } = result.data;
+      logger.info({ msg: "command ack received", sensorId, ack });
+
+      // Update device registry based on ACK
+      if (ack === "ENABLED") {
+        setDeviceEnabled(sensorId, true);
+        broadcast({ type: "device_config", deviceId: sensorId, enabled: true, ecoMode: undefined });
+      } else if (ack === "DISABLED") {
+        setDeviceEnabled(sensorId, false);
+        broadcast({ type: "device_config", deviceId: sensorId, enabled: false, ecoMode: undefined });
+      } else if (ack === "ECO_ON") {
+        setDeviceEcoMode(sensorId, true);
+        broadcast({ type: "device_config", deviceId: sensorId, enabled: undefined, ecoMode: true });
+      } else if (ack === "ECO_OFF") {
+        setDeviceEcoMode(sensorId, false);
+        broadcast({ type: "device_config", deviceId: sensorId, enabled: undefined, ecoMode: false });
+      }
       return;
     }
 

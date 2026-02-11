@@ -4,12 +4,16 @@ export type DeviceStatus = "ONLINE" | "OFFLINE";
 
 export type DeviceInfo = {
   deviceId: string;
-    zone: string;
+  zone: string;
   lastSeen: number;
   status: DeviceStatus;
   /** Status reported by the sensor itself via MQTT status topic */
   sensorOnline: boolean | null;
   latestNoiseDb?: number;
+  /** Whether the sensor is enabled (active) or disabled */
+  enabled: boolean;
+  /** Whether energy saving mode is active */
+  ecoMode: boolean;
 };
 
 const devices = new Map<string, DeviceInfo>();
@@ -27,7 +31,9 @@ export const updateDevice = (deviceId: string, zone: string, noiseDb?: number) =
     lastSeen: now,
     status: "ONLINE",
     sensorOnline: existing?.sensorOnline ?? null,
-    latestNoiseDb: noiseDb ?? existing?.latestNoiseDb
+    latestNoiseDb: noiseDb ?? existing?.latestNoiseDb,
+    enabled: existing?.enabled ?? true,
+    ecoMode: existing?.ecoMode ?? false
   });
 };
 
@@ -44,8 +50,28 @@ export const setDeviceStatus = (deviceId: string, zone: string, status: DeviceSt
     lastSeen: now,
     status,
     sensorOnline: status === "ONLINE",
-    latestNoiseDb: existing?.latestNoiseDb
+    latestNoiseDb: existing?.latestNoiseDb,
+    enabled: existing?.enabled ?? true,
+    ecoMode: existing?.ecoMode ?? false
   });
+};
+
+/**
+ * Set the enabled state of a device (activate / deactivate sensor).
+ */
+export const setDeviceEnabled = (deviceId: string, enabled: boolean) => {
+  const existing = devices.get(deviceId);
+  if (!existing) return;
+  devices.set(deviceId, { ...existing, enabled });
+};
+
+/**
+ * Set the eco-mode state of a device (energy saving mode).
+ */
+export const setDeviceEcoMode = (deviceId: string, ecoMode: boolean) => {
+  const existing = devices.get(deviceId);
+  if (!existing) return;
+  devices.set(deviceId, { ...existing, ecoMode });
 };
 
 export const markOffline = (deviceId: string) => {

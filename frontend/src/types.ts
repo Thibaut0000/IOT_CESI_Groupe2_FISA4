@@ -10,6 +10,10 @@ export type Device = {
   /** Status reported by the sensor hardware (Arduino) via MQTT */
   sensorOnline?: boolean | null;
   latestNoiseDb?: number;
+  /** Whether the sensor is enabled (active) or disabled */
+  enabled?: boolean;
+  /** Whether energy saving mode is active */
+  ecoMode?: boolean;
 };
 
 export type NoiseDataPoint = {
@@ -33,7 +37,8 @@ export type WsEvent =
   | { type: "noise"; deviceId: string; zone: string; noiseDb: number; ts: number }
   | { type: "alert"; deviceId: string; zone: string; noiseDb: number; thresholdDb: number; ts: number }
   | { type: "device_status"; deviceId: string; zone: string; status: DeviceStatus; lastSeen: number }
-  | { type: "thresholds"; thresholds: Threshold[] };
+  | { type: "thresholds"; thresholds: Threshold[] }
+  | { type: "device_config"; deviceId: string; enabled?: boolean; ecoMode?: boolean };
 
 export type AuditLog = {
   id: number;

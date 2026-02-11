@@ -25,6 +25,8 @@ const char* ZONE_MAQUETTE = "ETAGE02";
 // Topics
 const char* TOPIC_DB_FMT     = "campus/bruit/%s/db";
 const char* TOPIC_STATUS_FMT = "campus/bruit/%s/status";
+// Topic pour les commandes reçues du backend vers les capteurs
+const char* TOPIC_CMD = "campus/bruit/cmd";
 
 // =======================
 // WIFI / MQTT / NTP
@@ -45,7 +47,7 @@ bool timeSynced = false;
 // =======================
 // ZIGBEE RX BUFFER
 // =======================
-char buf[32];
+char buf[64];
 int idx = 0;
 
 // =======================
@@ -88,10 +90,67 @@ unsigned long nowEpoch() {
 }
 
 // =======================
+// MQTT CALLBACK (commandes du backend)
+// =======================
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // Traiter les commandes reçues sur campus/bruit/cmd
+  // Format JSON attendu : {"sensorId":"capteur_maquette","action":"DISABLE"}
+  // Actions possibles : ENABLE, DISABLE, ECO_ON, ECO_OFF
+
+  char msg[128];
+  if (length >= sizeof(msg)) return;
+  memcpy(msg, payload, length);
+  msg[length] = '\0';
+
+  Serial.print("[MQTT CMD] ");
+  Serial.println(msg);
+
+  // Parse simple JSON pour extraire sensorId et action
+  char sensorId[32] = "";
+  char action[16] = "";
+
+  char* sidStart = strstr(msg, "\"sensorId\":\"");
+  if (sidStart) {
+    sidStart += 12;
+    char* sidEnd = strchr(sidStart, '"');
+    if (sidEnd && (sidEnd - sidStart) < (int)sizeof(sensorId)) {
+      memcpy(sensorId, sidStart, sidEnd - sidStart);
+      sensorId[sidEnd - sidStart] = '\0';
+    }
+  }
+
+  char* actStart = strstr(msg, "\"action\":\"");
+  if (actStart) {
+    actStart += 10;
+    char* actEnd = strchr(actStart, '"');
+    if (actEnd && (actEnd - actStart) < (int)sizeof(action)) {
+      memcpy(action, actStart, actEnd - actStart);
+      action[actEnd - actStart] = '\0';
+    }
+  }
+
+  if (strlen(sensorId) == 0 || strlen(action) == 0) {
+    Serial.println("[MQTT CMD] Invalid command format");
+    return;
+  }
+
+  // Relayer la commande au capteur via Zigbee
+  Serial1.print("CMD:");
+  Serial1.print(action);
+  Serial1.print("\n");
+
+  Serial.print("[ZIGBEE TX] CMD:");
+  Serial.print(action);
+  Serial.print(" -> ");
+  Serial.println(sensorId);
+}
+
+// =======================
 // MQTT
 // =======================
 void connectMQTT() {
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+  mqttClient.setCallback(mqttCallback);
 
   char topicStatus[64];
   snprintf(topicStatus, sizeof(topicStatus), TOPIC_STATUS_FMT, ZONE_REAL);
@@ -103,10 +162,10 @@ void connectMQTT() {
            NAME_MAQUETTE, ZONE_MAQUETTE, nowEpoch());
 
   while (!mqttClient.connected()) {
-      const char* clientId = "sonometre-A";
+    const char* clientId = "sonometre-A";
 
     mqttClient.connect(clientId,
-                       MQTT_USER, MQTT_PASS,  
+                       MQTT_USER, MQTT_PASS,
                        topicStatus,
                        1,
                        true,
@@ -121,6 +180,10 @@ void connectMQTT() {
            NAME_MAQUETTE, ZONE_MAQUETTE, nowEpoch());
 
   mqttClient.publish(topicStatus, onlinePayload, true);
+
+  // S'abonner aux commandes du backend
+  mqttClient.subscribe(TOPIC_CMD, 1);
+  Serial.println("[MQTT] Subscribed to command topic");
 }
 
 // =======================
@@ -136,6 +199,21 @@ void publishNoise(const char* zone, const char* sensorId, float dbValue) {
            dbValue, sensorId, zone, nowEpoch());
 
   mqttClient.publish(topic, payload);
+}
+
+// Publier un ACK de commande vers le backend
+void publishCommandAck(const char* sensorId, const char* ackType) {
+  char topic[64];
+  snprintf(topic, sizeof(topic), "campus/bruit/%s/cmd_ack", ZONE_REAL);
+
+  char payload[128];
+  snprintf(payload, sizeof(payload),
+           "{\"sensorId\":\"%s\",\"ack\":\"%s\",\"ts\":%lu}",
+           sensorId, ackType, nowEpoch());
+
+  mqttClient.publish(topic, payload);
+  Serial.print("[MQTT TX] ACK: ");
+  Serial.println(ackType);
 }
 
 // =======================
@@ -177,28 +255,40 @@ void loop() {
       buf[idx] = '\0';
       idx = 0;
 
-  char sensorId[32];
-  char valueStr[16];
+      // Vérifier si c'est un ACK du capteur
+      if (strncmp(buf, "ACK:", 4) == 0) {
+        const char* ackType = buf + 4;
+        Serial.print("[ZIGBEE RX] ACK: ");
+        Serial.println(ackType);
+        // Relayer le ACK vers le backend via MQTT
+        publishCommandAck(NAME_MAQUETTE, ackType);
+      }
+      else {
+        // C'est une mesure de bruit : "sensorId:value"
+        char sensorId[32];
+        char valueStr[16];
 
-  char* sep = strchr(buf, ':');
-  if (sep) {
-    *sep = '\0';               // coupe la string en deux
-    strcpy(sensorId, buf);     // avant ":" = ID
-    strcpy(valueStr, sep + 1); // après ":" = valeur
+        char* sep = strchr(buf, ':');
+        if (sep) {
+          *sep = '\0';
+          strcpy(sensorId, buf);
+          strcpy(valueStr, sep + 1);
 
-    float db = atof(valueStr);
-    if (db < 0)   db = 0;
-    if (db > 120) db = 120;
+          float db = atof(valueStr);
+          if (db < 0)   db = 0;
+          if (db > 120) db = 120;
 
-    publishNoise(ZONE_REAL, sensorId, db);
-  }}
-  else {
-        if (idx < (int)sizeof(buf) - 1) {
-          buf[idx++] = c;
-        } else {
-          idx = 0;
+          publishNoise(ZONE_REAL, sensorId, db);
         }
       }
+    }
+    else {
+      if (idx < (int)sizeof(buf) - 1) {
+        buf[idx++] = c;
+      } else {
+        idx = 0;
+      }
+    }
   }
 
   // =====================

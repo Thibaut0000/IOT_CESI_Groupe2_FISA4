@@ -121,5 +121,29 @@ export const api = {
     a.download = `noise_${deviceId}_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  },
+
+  // Device enable/disable
+  setDeviceEnabled: async (deviceId: string, enabled: boolean) => {
+    const res = await fetch(`${API_URL}/devices/${encodeURIComponent(deviceId)}/enable`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ enabled })
+    });
+    handleUnauthorized(res);
+    if (!res.ok) throw new Error("Failed to set device enabled state");
+    return res.json();
+  },
+
+  // Device eco mode
+  setDeviceEcoMode: async (deviceId: string, ecoMode: boolean) => {
+    const res = await fetch(`${API_URL}/devices/${encodeURIComponent(deviceId)}/eco`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ ecoMode })
+    });
+    handleUnauthorized(res);
+    if (!res.ok) throw new Error("Failed to set device eco mode");
+    return res.json();
   }
 };
