@@ -19,7 +19,8 @@ const char* ZONE_REAL = "demo_salle";
 const char* ZONE_FAKE = "fake_salle";
 
 // Capteur reel
-const char* SENSOR_ID_REAL = "A";
+const char* NAME_MAQUETTE = "PASSERELLE01";
+const char* ZONE_MAQUETTE = "ETAGE02";
 
 // Topics
 const char* TOPIC_DB_FMT     = "campus/bruit/%s/db";
@@ -99,7 +100,7 @@ void connectMQTT() {
   char willPayload[128];
   snprintf(willPayload, sizeof(willPayload),
            "{\"online\":false,\"sensorId\":\"%s\",\"zone\":\"%s\",\"ts\":%lu}",
-           SENSOR_ID_REAL, ZONE_REAL, nowEpoch());
+           NAME_MAQUETTE, ZONE_MAQUETTE, nowEpoch());
 
   while (!mqttClient.connected()) {
       const char* clientId = "sonometre-A";
@@ -117,7 +118,7 @@ void connectMQTT() {
   char onlinePayload[128];
   snprintf(onlinePayload, sizeof(onlinePayload),
            "{\"online\":true,\"sensorId\":\"%s\",\"zone\":\"%s\",\"ts\":%lu}",
-           SENSOR_ID_REAL, ZONE_REAL, nowEpoch());
+           NAME_MAQUETTE, ZONE_MAQUETTE, nowEpoch());
 
   mqttClient.publish(topicStatus, onlinePayload, true);
 }
@@ -176,23 +177,28 @@ void loop() {
       buf[idx] = '\0';
       idx = 0;
 
-      char* valueStr = buf;
-      char* sep = strchr(buf, ':');
-      if (sep) valueStr = sep + 1;
+  char sensorId[32];
+  char valueStr[16];
 
-      float db = atof(valueStr);
-      if (db < 0)   db = 0;
-      if (db > 120) db = 120;
+  char* sep = strchr(buf, ':');
+  if (sep) {
+    *sep = '\0';               // coupe la string en deux
+    strcpy(sensorId, buf);     // avant ":" = ID
+    strcpy(valueStr, sep + 1); // après ":" = valeur
 
-      publishNoise(ZONE_REAL, SENSOR_ID_REAL, db);
+    float db = atof(valueStr);
+    if (db < 0)   db = 0;
+    if (db > 120) db = 120;
 
-    } else {
-      if (idx < (int)sizeof(buf) - 1) {
-        buf[idx++] = c;
-      } else {
-        idx = 0;
+    publishNoise(ZONE_REAL, sensorId, db);
+  }}
+  else {
+        if (idx < (int)sizeof(buf) - 1) {
+          buf[idx++] = c;
+        } else {
+          idx = 0;
+        }
       }
-    }
   }
 
   // =====================
